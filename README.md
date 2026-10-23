@@ -88,4 +88,4 @@ python -m unittest discover -s tests -v
 
 [Documento de diseño en PDF](docs/Lab10_Documento_Diseno_Jorge_Lopez.pdf).
 
-Las gráficas 1–8 están implementadas. El PDF conserva el diseño entregado en el avance; su actualización y la revisión integral corresponden a la tarea final.
+Las gráficas 1–8 están implementadas. El PDF está actualizado con el diseño final, la navegación, las interacciones y la procedencia de los modelos. La revisión integral está completada.
