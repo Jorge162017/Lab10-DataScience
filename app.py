@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from src.datos import cargar_visitantes, serie_temporal
+from src.exploracion import mostrar_estacionalidad, mostrar_mercados, PALETA
 
 st.set_page_config(page_title='Panorama de visitantes a Guatemala', page_icon='🌿', layout='wide')
 
@@ -12,9 +13,10 @@ def datos():
 
 
 def restablecer():
-    for clave in ['periodo', 'regiones', 'vias', 'detalle', 'visibles']:
+    for clave in ['periodo', 'regiones', 'vias', 'detalle', 'visibles_panorama', 'visibles_mercados', 'cantidad_regiones', 'comparar_regiones', 'modo_composicion']:
         st.session_state.pop(clave, None)
-    st.session_state['version_barras'] = st.session_state.get('version_barras', 0) + 1
+    for clave in ['version_barras', 'version_mapa', 'version_mercados']:
+        st.session_state[clave] = st.session_state.get(clave, 0) + 1
 
 
 def estilo(fig):
@@ -27,10 +29,11 @@ def estilo(fig):
 
 st.title('Panorama de visitantes a Guatemala')
 st.write('Explora la afluencia y las vías de ingreso para orientar la planificación de servicios turísticos.')
-st.caption('PANORAMA · Avance: evolución temporal y volumen por vía')
+st.caption('DATOS OBSERVADOS · Evolución, temporadas y mercados de origen')
 df = datos()
 inicio, fin = df.Fecha.min(), df.Fecha.max()
 with st.sidebar:
+    seccion = st.radio('Navegación', ['Panorama', 'Mercados y vías'], key='seccion')
     st.header('Explorar visitantes')
     st.button('Restablecer filtros y selección', on_click=restablecer, width='stretch')
     meses = pd.date_range(inicio, fin, freq='MS').to_pydatetime().tolist()
@@ -41,9 +44,11 @@ with st.sidebar:
     vias = st.multiselect('Vías de ingreso', sorted(df['Vía'].dropna().unique()),
                           default=sorted(df['Vía'].dropna().unique()), key='vias')
     detalle = st.radio('Nivel de detalle temporal', ['Mes', 'Trimestre', 'Año'], horizontal=True, key='detalle')
-    visibles = st.multiselect('Gráficas visibles', ['Evolución temporal', 'Volumen por vía'],
-                              default=['Evolución temporal', 'Volumen por vía'], key='visibles')
-    st.caption('Visitantes = turistas + excursionistas. Los filtros se aplican a ambas gráficas.')
+    opciones = (['Evolución temporal', 'Volumen por vía', 'Estacionalidad'] if seccion == 'Panorama'
+                else ['Mercados de origen', 'Evolución por región', 'Composición región–vía'])
+    visibles = st.multiselect('Gráficas visibles', opciones, default=opciones,
+                              key='visibles_panorama' if seccion == 'Panorama' else 'visibles_mercados')
+    st.caption('Visitantes = turistas + excursionistas. Los filtros se aplican a todas las gráficas de la sección.')
 
 filtrado = df.loc[df.Fecha.between(*periodo) & df['Región dos'].isin(regiones) & df['Vía'].isin(vias)]
 st.caption(f'Período seleccionado: {periodo[0]:%m/%Y}–{periodo[1]:%m/%Y} · {len(regiones)} regiones · {len(vias)} vías')
@@ -52,18 +57,26 @@ if filtrado.empty:
     st.warning('No hay información para esta selección. Elige al menos una región y una vía, o restablece los filtros.')
     st.stop()
 if not visibles:
-    st.info('Selecciona una o ambas gráficas en el panel lateral para explorar los datos.')
+    st.info('Selecciona al menos una gráfica en el panel lateral para explorar los datos.')
     st.stop()
 
 # Los contenedores conservan el orden visual; la selección se procesa antes de dibujar la línea.
 linea = st.container()
 barras = st.container()
+mapa = st.container()
+mes_seleccionado = None
+if seccion == 'Panorama' and 'Estacionalidad' in visibles:
+    with mapa:
+        mes_seleccionado = mostrar_estacionalidad(filtrado, periodo, estilo)
 seleccionada = None
 if 'Volumen por vía' in visibles:
     with barras:
         st.subheader('2. ¿Por dónde ingresan los visitantes?')
         st.write('Selecciona una barra para mostrar la evolución de esa vía en la primera gráfica.')
-        totales = filtrado.groupby('Vía', as_index=False)['Viajero'].sum().sort_values('Viajero', ascending=False)
+        datos_vias = filtrado if mes_seleccionado is None else filtrado.loc[filtrado.Fecha.eq(mes_seleccionado)]
+        if mes_seleccionado is not None:
+            st.info(f'Desglose del mes seleccionado en el mapa: {mes_seleccionado:%m/%Y}. La evolución conserva todo el período para dar contexto.')
+        totales = datos_vias.groupby('Vía', as_index=False)['Viajero'].sum().sort_values('Viajero', ascending=False)
         total = totales.Viajero.sum()
         totales['Participación'] = totales.Viajero / total * 100 if total else 0
         fig = px.bar(totales, x='Vía', y='Viajero', custom_data=['Vía', 'Participación'],
@@ -79,7 +92,7 @@ if 'Volumen por vía' in visibles:
                 seleccionada = candidata
         st.button('Ver todas las vías en la evolución', on_click=lambda: st.session_state.update(
             version_barras=st.session_state.get('version_barras', 0) + 1))
-        st.caption('La altura representa el volumen acumulado dentro del período y las regiones seleccionadas. Una vía con cero no implica ausencia real de actividad.')
+        st.caption('La altura representa el volumen del mes seleccionado en el mapa o, sin selección, el acumulado del período filtrado. Una vía con cero no implica ausencia real de actividad.')
 
 if 'Evolución temporal' in visibles:
     with linea:
@@ -97,8 +110,20 @@ if 'Evolución temporal' in visibles:
             st.plotly_chart(estilo(fig), width='stretch', key='evolucion', config={'displaylogo': False})
             st.caption('Acerca una zona arrastrando sobre la gráfica; haz doble clic para recuperar la vista. Cambia el nivel de detalle en el panel lateral.')
 
+
+if seccion == 'Mercados y vías':
+    todas_regiones = sorted(df['Región dos'].dropna().unique())
+    colores = {region: PALETA[i % len(PALETA)] for i, region in enumerate(todas_regiones)}
+    # Conservar solo opciones que siguen existiendo después de cambiar filtros.
+    disponibles = filtrado['Región dos'].unique().tolist()
+    if 'comparar_regiones' in st.session_state:
+        st.session_state['comparar_regiones'] = [r for r in st.session_state['comparar_regiones'] if r in disponibles]
+    if st.session_state.get('cantidad_regiones', 1) > len(disponibles):
+        st.session_state.pop('cantidad_regiones', None)
+    mostrar_mercados(filtrado, visibles, detalle, colores, estilo)
+
 with st.expander('Cómo interpretar la información'):
     st.write('Se reutiliza la definición comparable del Laboratorio 1: Turista + Excursionista. Las cantidades decimales de la fuente se conservan al calcular; el detalle visual se redondea a personas.')
     st.write('El cambio metodológico desde 2023 afecta otras categorías de viajero y la cobertura marítima requiere cautela. La caída alrededor de 2020 coincide con la pandemia; la gráfica por sí sola no establece causas.')
     st.write('Las entradas nacionales no equivalen a personas únicas, ventas, ocupación hotelera ni demanda de una empresa o destino particular. Los resultados son académicos y no se presentan como cifras oficiales.')
-    st.caption('Fuente: base migratoria incluida en el Laboratorio 1 · enero de 2009–junio de 2026. Este avance presenta datos observados; la comparación predictiva corresponde a una etapa posterior.')
+    st.caption('Fuente: base migratoria incluida en el Laboratorio 1 · enero de 2009–junio de 2026. Estas seis visualizaciones presentan datos observados; la comparación predictiva corresponde a una etapa posterior.')
