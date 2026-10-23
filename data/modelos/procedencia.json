@@ -1,0 +1,28 @@
+{
+  "origen": "Reproducción de ajustes existentes del Laboratorio 1; sin búsqueda de modelos ni hiperparámetros nuevos.",
+  "notebook": "referencias/lab1/Lab1_AnalisisSeriesTiempo.ipynb",
+  "sha256_notebook": "007c84d36101f688ecdf3e3bb597b31956d9d96e3027ae9acb78bc8cd844de49",
+  "statsmodels": "0.14.6",
+  "numpy": "2.5.1",
+  "pandas": "2.3.3",
+  "entrenamiento_fin": "2021-03-01",
+  "prueba_inicio": "2021-04-01",
+  "prueba_fin": "2026-06-01",
+  "meses_entrenamiento": 147,
+  "meses_prueba": 63,
+  "protocolo": "Pronóstico de horizonte fijo de 63 meses desde marzo de 2021; sin incorporar observaciones de prueba.",
+  "sarima_seleccionados": {
+    "Total visitantes": "SARIMA(1,0,1)(1,1,0)[12]",
+    "Vía — Aérea": "SARIMA(1,0,1)(0,1,1)[12]",
+    "Vía — Terrestre": "SARIMA(1,0,1)(1,1,0)[12]",
+    "Vía — Marítima": "SARIMA(1,1,1)(0,1,1)[12]",
+    "Región — América Del Centro": "SARIMA(1,0,1)(1,1,0)[12]",
+    "Región — América Del Norte": "SARIMA(1,1,2)(0,1,1)[12]",
+    "Región — Europa": "SARIMA(1,0,2)(0,1,1)[12]"
+  },
+  "configuracion_ses": "SimpleExpSmoothing; initialization_method=estimated; optimized=True",
+  "configuracion_hw": "ExponentialSmoothing; trend=add; damped_trend=True; seasonal=add; seasonal_periods=12; initialization_method=estimated; optimized=True; use_brute=True",
+  "transformacion_arima": "log1p; inversión expm1 y recorte de negativos a cero",
+  "comparaciones_coincidentes_al_redondeo": 21,
+  "comparaciones_totales": 21
+}

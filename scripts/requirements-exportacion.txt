@@ -1,0 +1,6 @@
+# Solo para reproducir y exportar los ajustes originales del Lab 1.
+# El tablero no necesita statsmodels ni ejecuta este proceso.
+numpy==2.5.1
+pandas==2.3.3
+statsmodels==0.14.6
+openpyxl>=3.1,<4
