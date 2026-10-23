@@ -56,8 +56,9 @@ def mostrar_mercados(df, visibles, detalle, colores, estilo):
     regiones_activas = []
     if 'Mercados de origen' in visibles:
         st.subheader('4. ¿Qué regiones aportan más visitantes?')
+        st.session_state.setdefault('cantidad_regiones', min(5, len(regiones)))
         cantidad = st.selectbox('Cantidad de regiones en el ranking', list(range(1, len(regiones) + 1)),
-                                index=min(5, len(regiones)) - 1, key='cantidad_regiones')
+                                index=None, key='cantidad_regiones', filter_mode=None)
         tabla = ranking.head(cantidad).rename('Visitantes').reset_index()
         total = ranking.sum()
         tabla['Participación'] = tabla.Visitantes / total * 100 if total else 0
@@ -90,7 +91,7 @@ def mostrar_mercados(df, visibles, detalle, colores, estilo):
             seleccion = regiones_activas
             st.caption('La selección del ranking controla esta evolución. Limpia esa selección para elegir regiones manualmente.')
         else:
-            seleccion = st.multiselect('Regiones a comparar en la evolución', regiones, key='comparar_regiones')
+            seleccion = st.multiselect('Regiones a comparar en la evolución', regiones, key='comparar_regiones', filter_mode=None, wrap=True)
         if not seleccion:
             st.info('Selecciona al menos una región para ver su evolución.')
         else:

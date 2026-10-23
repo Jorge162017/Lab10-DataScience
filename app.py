@@ -3,6 +3,7 @@ import plotly.express as px
 import streamlit as st
 from src.datos import cargar_visitantes, serie_temporal
 from src.exploracion import mostrar_estacionalidad, mostrar_mercados, PALETA
+from src.vista_modelos import mostrar_modelos
 
 st.set_page_config(page_title='Panorama de visitantes a Guatemala', page_icon='🌿', layout='wide')
 
@@ -13,9 +14,8 @@ def datos():
 
 
 def restablecer():
-    for clave in ['periodo', 'regiones', 'vias', 'detalle', 'visibles_panorama', 'visibles_mercados', 'cantidad_regiones', 'comparar_regiones', 'modo_composicion']:
-        st.session_state.pop(clave, None)
-    for clave in ['version_barras', 'version_mapa', 'version_mercados']:
+    st.session_state['_restablecer_exploracion'] = True
+    for clave in ['version_barras', 'version_mapa', 'version_mercados', 'version_periodo']:
         st.session_state[clave] = st.session_state.get(clave, 0) + 1
 
 
@@ -32,23 +32,62 @@ st.write('Explora la afluencia y las vías de ingreso para orientar la planifica
 st.caption('DATOS OBSERVADOS · Evolución, temporadas y mercados de origen')
 df = datos()
 inicio, fin = df.Fecha.min(), df.Fecha.max()
+meses = pd.date_range(inicio, fin, freq='MS').to_pydatetime().tolist()
+valores_iniciales = {
+    'regiones': sorted(df['Región dos'].dropna().unique()),
+    'vias': sorted(df['Vía'].dropna().unique()),
+    'detalle': 'Mes',
+    'visibles_panorama': ['Evolución temporal', 'Volumen por vía', 'Estacionalidad'],
+    'visibles_mercados': ['Mercados de origen', 'Evolución por región', 'Composición región–vía'],
+}
+if st.session_state.pop('_restablecer_exploracion', False):
+    # Asignar los valores antes de crear los controles. Borrar sus claves puede
+    # hacer que Streamlit recupere la selección anterior enviada por el navegador.
+    st.session_state.update(valores_iniciales)
+    st.session_state['cantidad_regiones'] = min(5, len(valores_iniciales['regiones']))
+    st.session_state['comparar_regiones'] = df.groupby('Región dos').Viajero.sum().nlargest(3).index.tolist()
+    st.session_state['modo_composicion'] = 'Porcentaje'
+for clave, valor in valores_iniciales.items():
+    st.session_state.setdefault(clave, valor)
+
 with st.sidebar:
-    seccion = st.radio('Navegación', ['Panorama', 'Mercados y vías'], key='seccion')
-    st.header('Explorar visitantes')
-    st.button('Restablecer filtros y selección', on_click=restablecer, width='stretch')
-    meses = pd.date_range(inicio, fin, freq='MS').to_pydatetime().tolist()
-    periodo = st.select_slider('Período', options=meses, value=(meses[0], meses[-1]),
-                               format_func=lambda x: x.strftime('%m/%Y'), key='periodo')
-    regiones = st.multiselect('Regiones de procedencia', sorted(df['Región dos'].dropna().unique()),
-                              default=sorted(df['Región dos'].dropna().unique()), key='regiones')
-    vias = st.multiselect('Vías de ingreso', sorted(df['Vía'].dropna().unique()),
-                          default=sorted(df['Vía'].dropna().unique()), key='vias')
-    detalle = st.radio('Nivel de detalle temporal', ['Mes', 'Trimestre', 'Año'], horizontal=True, key='detalle')
+    st.markdown('### Observatorio turístico')
+    st.caption('Visitantes a Guatemala · 2009–2026')
+    seccion = st.radio('Secciones', ['Panorama', 'Mercados y vías', 'Modelos y límites'], key='seccion')
+    st.divider()
+    st.caption({'Panorama': 'Evolución de visitantes, vías de ingreso y temporadas.',
+                'Mercados y vías': 'Origen de los visitantes y composición de cada mercado.',
+                'Modelos y límites': 'Predicciones históricas y comparación de sus errores.'}[seccion])
+    st.caption('Los filtros y las opciones de cada gráfica están en el área principal.')
+if seccion == 'Modelos y límites':
+    mostrar_modelos(estilo)
+    st.stop()
+st.header(seccion)
+st.caption('Explora tendencias y temporadas.' if seccion == 'Panorama' else 'Compara los mercados de origen y sus vías de ingreso.')
+with st.container(border=True):
+    st.markdown('**Período y detalle**')
+    fechas_col, detalle_col, limpiar_col = st.columns([3, 2, 1.5], vertical_alignment='bottom')
+    with fechas_col:
+        periodo = st.select_slider('Período', options=meses, value=(meses[0], meses[-1]),
+                                   format_func=lambda x: x.strftime('%m/%Y'), key=f"periodo_{st.session_state.get('version_periodo', 0)}")
+    with detalle_col:
+        detalle = st.radio('Agrupar las líneas por', ['Mes', 'Trimestre', 'Año'], horizontal=True, key='detalle')
+    with limpiar_col:
+        st.button('Restablecer filtros', on_click=restablecer, key='restablecer_filtros', width='stretch')
+    with st.expander('Filtrar por regiones y vías'):
+        izquierda, derecha = st.columns([2, 1])
+        with izquierda:
+            regiones = st.multiselect('Regiones de procedencia', sorted(df['Región dos'].dropna().unique()),
+                                      key='regiones', filter_mode=None, wrap=True)
+        with derecha:
+            vias = st.multiselect('Vías de ingreso', sorted(df['Vía'].dropna().unique()),
+                                  key='vias', filter_mode=None, wrap=True)
+        st.caption('Las selecciones se aplican a las gráficas de exploración. Quita una opción para excluirla.')
     opciones = (['Evolución temporal', 'Volumen por vía', 'Estacionalidad'] if seccion == 'Panorama'
                 else ['Mercados de origen', 'Evolución por región', 'Composición región–vía'])
-    visibles = st.multiselect('Gráficas visibles', opciones, default=opciones,
-                              key='visibles_panorama' if seccion == 'Panorama' else 'visibles_mercados')
-    st.caption('Visitantes = turistas + excursionistas. Los filtros se aplican a todas las gráficas de la sección.')
+    with st.expander('Elegir gráficas visibles'):
+        visibles = st.pills('Mostrar', opciones, selection_mode='multi', wrap=True,
+                            key='visibles_panorama' if seccion == 'Panorama' else 'visibles_mercados')
 
 filtrado = df.loc[df.Fecha.between(*periodo) & df['Región dos'].isin(regiones) & df['Vía'].isin(vias)]
 st.caption(f'Período seleccionado: {periodo[0]:%m/%Y}–{periodo[1]:%m/%Y} · {len(regiones)} regiones · {len(vias)} vías')
@@ -57,7 +96,7 @@ if filtrado.empty:
     st.warning('No hay información para esta selección. Elige al menos una región y una vía, o restablece los filtros.')
     st.stop()
 if not visibles:
-    st.info('Selecciona al menos una gráfica en el panel lateral para explorar los datos.')
+    st.info('Activa al menos una opción en «Elegir gráficas visibles».')
     st.stop()
 
 # Los contenedores conservan el orden visual; la selección se procesa antes de dibujar la línea.
@@ -108,7 +147,7 @@ if 'Evolución temporal' in visibles:
             fig.update_traces(connectgaps=False, hovertemplate='%{x|%m/%Y}<br>%{y:,.0f} visitantes<br>%{customdata[0]}<extra></extra>')
             fig.update_layout(xaxis_title='Período', yaxis_title='Visitantes', dragmode='zoom')
             st.plotly_chart(estilo(fig), width='stretch', key='evolucion', config={'displaylogo': False})
-            st.caption('Acerca una zona arrastrando sobre la gráfica; haz doble clic para recuperar la vista. Cambia el nivel de detalle en el panel lateral.')
+            st.caption('Acerca una zona arrastrando sobre la gráfica; haz doble clic para recuperar la vista. Cambia la agrupación en «Período y detalle», al inicio de la sección.')
 
 
 if seccion == 'Mercados y vías':
@@ -126,4 +165,4 @@ with st.expander('Cómo interpretar la información'):
     st.write('Se reutiliza la definición comparable del Laboratorio 1: Turista + Excursionista. Las cantidades decimales de la fuente se conservan al calcular; el detalle visual se redondea a personas.')
     st.write('El cambio metodológico desde 2023 afecta otras categorías de viajero y la cobertura marítima requiere cautela. La caída alrededor de 2020 coincide con la pandemia; la gráfica por sí sola no establece causas.')
     st.write('Las entradas nacionales no equivalen a personas únicas, ventas, ocupación hotelera ni demanda de una empresa o destino particular. Los resultados son académicos y no se presentan como cifras oficiales.')
-    st.caption('Fuente: base migratoria incluida en el Laboratorio 1 · enero de 2009–junio de 2026. Estas seis visualizaciones presentan datos observados; la comparación predictiva corresponde a una etapa posterior.')
+    st.caption('Fuente: base migratoria incluida en el Laboratorio 1 · enero de 2009–junio de 2026. Estas seis visualizaciones presentan datos observados. Consulta la evaluación predictiva en Modelos y límites.')
